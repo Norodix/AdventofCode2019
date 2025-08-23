@@ -6,7 +6,7 @@
 #define LINELEN (0x4000) // maximum length of lines to be read
 #define GRIDSIZE 35000
 #define CENTER (GRIDSIZE / 2)
-static int grid[GRIDSIZE][GRIDSIZE];
+static int grid[GRIDSIZE][GRIDSIZE] = {0};
 static int rowmin = CENTER;
 static int colmin = CENTER;
 static int rowmax = CENTER;
@@ -27,7 +27,7 @@ void print_center(int size)
 }
 
 int main(int argc, char** argv) {
-    memset(grid, 0, sizeof(grid));
+    // memset(grid, 0, sizeof(grid));
     if (argc != 2) {
         printf("Must have 1 arg, the input file name\n");
         return -1;
@@ -40,8 +40,10 @@ int main(int argc, char** argv) {
     }
     char line[LINELEN];
 
+    int row = CENTER, col = CENTER;
     for (int i = 1; i <= 2; i++){
-        int row = CENTER, col = CENTER;
+        row = CENTER;
+        col = CENTER;
         fgets(line, sizeof(line), f);
         char* token = strtok(line, ",\n");
         while(token != NULL)
@@ -90,16 +92,47 @@ int main(int argc, char** argv) {
     print_center(10);
     printf("Bounds: %d - %d     %d - %d\n", rowmin, rowmax, colmin, colmax);
 
+    // Do not check everything, just follow one line through
     int dmin = GRIDSIZE;
-    for (int row = rowmin; row <= rowmax; row++){
-        for (int col = colmin; col <= colmax; col++){
+    rewind(f);
+    fgets(line, sizeof(line), f);
+    char* token = strtok(line, ",\n");
+    row = CENTER;
+    col = CENTER;
+    while(token != NULL)
+    {
+        char dir = token[0];
+        int len = strtol(token+1, NULL, 10);
+        for (int j = 0; j < len; j++){
+            switch (dir) {
+                case 'R':{
+                    col++;
+                    break;
+                }
+                case 'L':{
+                    col--;
+                    break;
+                }
+                case 'U':{
+                    row--;
+                    break;
+                }
+                case 'D':{
+                    row++;
+                    break;
+                }
+                default: {
+                    printf("Invalid direction\n");
+                    return -1;
+                }
+            }
             if (grid[row][col] == 3){
                 int d = abs(row-CENTER) + abs(col-CENTER);
                 dmin = MIN(d, dmin);
             }
         }
+        token = strtok(NULL, ",\n");
     }
-
     printf("Minimum distance is %d\n", dmin);
 
     return 0;
