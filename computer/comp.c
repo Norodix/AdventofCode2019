@@ -19,9 +19,29 @@
 
 static int64_t memory_initial[MEMORY_MAX];
 
-// These can be defined externally
-int64_t get_custom_input();
-void put_custom_output(int64_t num);
+void ring_push(ringbuffer *r, int64_t v){
+    // lets assume we never overwrite it... we will worry about it later
+    r->buffer[r->write_index] = v;
+    r->write_index++;
+}
+
+int64_t ring_pop(ringbuffer *r, int64_t *v)
+{
+    if (r->read_index >= r->write_index)
+    {
+        return 0;
+    }
+    else
+    {
+        *v = r->buffer[r->read_index];
+        r->read_index++;
+        if (r->read_index == r->write_index) {
+            r->read_index = 0;
+            r->write_index = 0;
+        }
+        return 1;
+    }
+}
 
 void memdump(computer* c, int len)
 {
@@ -37,6 +57,11 @@ void memdump(computer* c, int len)
 
 void reset_memory(computer* c) {
     memcpy(c->memory, memory_initial, sizeof(c->memory));
+}
+
+void reset_buffer(ringbuffer* r)
+{
+    memset(r, 0, sizeof(ringbuffer));
 }
 
 // Is the nth arg immediate?
@@ -69,25 +94,20 @@ static void mult(computer* c, int64_t *m) {
 }
 
 void input(computer* c, int64_t *m) {
-    int num = 0;
-#ifndef CUSTOM_INPUT
-    char str[100] = "\0";
-    printf("\n>");
-    fgets(str, 100, stdin);
-    num = strtol(str, NULL, 10);
-#else
-    num = get_custom_input();
-#endif
+    int64_t num = 0;
+    int success = 0;
+    success = ring_pop(c->in_buffer, &num);
+    if (!success)
+    {
+        c->blocked = 1;
+        return;
+    }
     c->memory[*(m+1)] = num;
 }
 
 void output(computer* c, int64_t *m) {
     int64_t num = get_arg(c, m, 1);
-#ifndef CUSTOM_OUTPUT
-    printf("%ld\n", num);
-#else
-    put_custom_output(num);
-#endif
+    ring_push(c->out_buffer, num);
 }
 
 static void halt(computer* c, int64_t *m)
@@ -220,6 +240,7 @@ void process(computer* c)
 {
     c->pc = 0;
     c->halted = 0;
+    c->blocked = 0;
 
     struct Op instruction = get_op_by_addr(c, c->pc);
     while(!c->halted)
@@ -228,6 +249,12 @@ void process(computer* c)
         disas_inst(c, pc);
         #endif
         if (instruction.operation) instruction.operation(c, &c->memory[c->pc]);
+        // If blocked, do not advance the counter but just exit the process, we will pick itup here
+        if (c->blocked)
+        {
+            printf("Blocking\n");
+            return;
+        }
         c->pc += instruction.argcount + 1;
         instruction = get_op_by_addr(c, c->pc);
     }
