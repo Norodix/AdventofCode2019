@@ -17,29 +17,26 @@
 #define INST_LESS        7
 #define INST_EQUAL       8
 
-int64_t memory[MEMORY_MAX];
 static int64_t memory_initial[MEMORY_MAX];
-static uint8_t halted = 0;
-static int pc = 0;
 
 // These can be defined externally
 int64_t get_custom_input();
 void put_custom_output(int64_t num);
 
-void memdump(int len)
+void memdump(computer* c, int len)
 {
     for (int row = 0; row < len/10; row++){
         printf("%3d: ", row*10);
         for(int i = 0; i + row*10 < len && i < 10; i++){
-            printf("%6ld\t", memory[i+row*10]);
+            printf("%6ld\t", c->memory[i+row*10]);
         }
         printf("\n");
     }
     printf("\n");
 }
 
-void reset_memory() {
-    memcpy(memory, memory_initial, sizeof(memory));
+void reset_memory(computer* c) {
+    memcpy(c->memory, memory_initial, sizeof(c->memory));
 }
 
 // Is the nth arg immediate?
@@ -53,25 +50,25 @@ static int is_imm(int64_t inst, int n)
     return inst & 1;
 }
 
-static int64_t get_arg(int64_t *m, int n) {
+static int64_t get_arg(computer* c, int64_t *m, int n) {
     // Immediate mode
     if (is_imm(*m, n)) {
         return *(m+n);
     }
     else {
-        return memory[*(m+n)];
+        return c->memory[*(m+n)];
     }
 }
 
-static void add(int64_t *m) {
-    memory[*(m+3)] = get_arg(m, 1) + get_arg(m, 2);
+static void add(computer* c, int64_t *m) {
+    c->memory[*(m+3)] = get_arg(c, m, 1) + get_arg(c, m, 2);
 }
 
-static void mult(int64_t *m) {
-    memory[*(m+3)] = get_arg(m, 1) * get_arg(m, 2);
+static void mult(computer* c, int64_t *m) {
+    c->memory[*(m+3)] = get_arg(c, m, 1) * get_arg(c, m, 2);
 }
 
-void input(int64_t *m) {
+void input(computer* c, int64_t *m) {
     int num = 0;
 #ifndef CUSTOM_INPUT
     char str[100] = "\0";
@@ -81,11 +78,11 @@ void input(int64_t *m) {
 #else
     num = get_custom_input();
 #endif
-    memory[*(m+1)] = num;
+    c->memory[*(m+1)] = num;
 }
 
-void output(int64_t *m) {
-    int64_t num = get_arg(m, 1);
+void output(computer* c, int64_t *m) {
+    int64_t num = get_arg(c, m, 1);
 #ifndef CUSTOM_OUTPUT
     printf("%ld\n", num);
 #else
@@ -93,51 +90,51 @@ void output(int64_t *m) {
 #endif
 }
 
-static void halt(int64_t *m)
+static void halt(computer* c, int64_t *m)
 {
-    halted = 1;
+    c->halted = 1;
 }
 
-static void jump_true(int64_t *m)
+static void jump_true(computer* c, int64_t *m)
 {
-    int64_t arg1 = get_arg(m, 1);
+    int64_t arg1 = get_arg(c, m, 1);
     if (arg1 != 0) {
-        pc = get_arg(m, 2) - 3;
+        c->pc = get_arg(c, m, 2) - 3;
     }
 }
 
-static void jump_false(int64_t *m)
+static void jump_false(computer* c, int64_t *m)
 {
-    int64_t arg1 = get_arg(m, 1);
+    int64_t arg1 = get_arg(c, m, 1);
     if (arg1 == 0) {
-        pc = get_arg(m, 2) - 3;
+        c->pc = get_arg(c, m, 2) - 3;
     }
 }
 
-static void less_than(int64_t *m)
+static void less_than(computer* c, int64_t *m)
 {
     int val = 0;
-    if (get_arg(m, 1) < get_arg(m, 2))
+    if (get_arg(c, m, 1) < get_arg(c, m, 2))
     {
         val = 1;
     }
-    memory[*(m+3)] = val;
+    c->memory[*(m+3)] = val;
 }
 
-static void equal(int64_t *m)
+static void equal(computer* c, int64_t *m)
 {
     int val = 0;
-    if (get_arg(m, 1) == get_arg(m, 2))
+    if (get_arg(c, m, 1) == get_arg(c, m, 2))
     {
         val = 1;
     }
-    memory[*(m+3)] = val;
+    c->memory[*(m+3)] = val;
 }
 
 struct Op {
     char name[4];
     int argcount;
-    void (*operation)(int64_t*);
+    void (*operation)(computer*, int64_t*);
 };
 
 static struct Op operation[] = {
@@ -199,54 +196,40 @@ static struct Op get_op(int opindex) {
     return operation[opindex%100];
 }
 
-static struct Op get_op_by_addr(int addr) {
-    return get_op(memory[addr]);
+static struct Op get_op_by_addr(computer* c, int addr) {
+    return get_op(c->memory[addr]);
 }
 
-void disas_inst(int addr)
+void disas_inst(computer* c, int addr)
 {
-    struct Op instruction = get_op_by_addr(addr);
-    printf("%04d: %4ld %s", addr, memory[addr], instruction.name);
+    struct Op instruction = get_op_by_addr(c, addr);
+    printf("%04d: %4ld %s", addr, c->memory[addr], instruction.name);
     for (int i = 0; i < instruction.argcount; i++)
     {
-        if (is_imm(memory[addr], i+1)) {
-            printf("\t#%ld", memory[addr+i+1]);
+        if (is_imm(c->memory[addr], i+1)) {
+            printf("\t#%ld", c->memory[addr+i+1]);
         }
         else {
-            printf("\t%ld->#%ld", memory[addr+i+1], memory[memory[addr+i+1]]);
+            printf("\t%ld->#%ld", c->memory[addr+i+1], c->memory[c->memory[addr+i+1]]);
         }
     }
     printf("\n");
 }
 
-void disas_prog(int len)
+void process(computer* c)
 {
-    int pc = 0;
-    struct Op instruction = get_op_by_addr(pc);
-    while(pc < len)
-    {
-        disas_inst(pc);
-        pc += instruction.argcount + 1;
-        instruction = get_op_by_addr(pc);
-    }
-    fflush(stdout);
-}
+    c->pc = 0;
+    c->halted = 0;
 
-
-void process()
-{
-    pc = 0;
-    halted = 0;
-
-    struct Op instruction = get_op_by_addr(pc);
-    while(!halted)
+    struct Op instruction = get_op_by_addr(c, c->pc);
+    while(!c->halted)
     {
         #ifdef DEBUG_INST
-        disas_inst(pc);
+        disas_inst(c, pc);
         #endif
-        if (instruction.operation) instruction.operation(&memory[pc]);
-        pc += instruction.argcount + 1;
-        instruction = get_op_by_addr(pc);
+        if (instruction.operation) instruction.operation(c, &c->memory[c->pc]);
+        c->pc += instruction.argcount + 1;
+        instruction = get_op_by_addr(c, c->pc);
     }
 }
 

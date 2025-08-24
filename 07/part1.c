@@ -7,6 +7,7 @@
 static int64_t input_buffer[2];
 static int input_index = 0;
 static int64_t output_buffer;
+static computer c;
 // Define these two here to allow chaining the program
 int64_t get_custom_input()
 {
@@ -26,10 +27,10 @@ int64_t test_permutation(int64_t *phase_seq)
     input_index = 0;
     for (int i = 0; i < 5; i++)
     {
-        reset_memory();
+        reset_memory(&c);
         input_buffer[0] = phase_seq[i];
         input_buffer[1] = output_buffer;
-        process();
+        process(&c);
     }
     return output_buffer;
 }
@@ -53,10 +54,10 @@ int main(int argc, char** argv) {
     int memlen = 0;
     while (!feof(f)) {
         memlen = parse_memory(line);
-        reset_memory();
+        reset_memory(&c);
         fgets(line, sizeof(line), f);
     }
-    reset_memory();
+    reset_memory(&c);
 
     int64_t max = 0;
     int64_t perm[5];
