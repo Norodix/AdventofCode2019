@@ -22,6 +22,10 @@ static int64_t memory_initial[MEMORY_MAX];
 static uint8_t halted = 0;
 static int pc = 0;
 
+// These can be defined externally
+int64_t get_custom_input();
+void put_custom_output(int64_t num);
+
 void memdump(int len)
 {
     for (int row = 0; row < len/10; row++){
@@ -67,15 +71,26 @@ static void mult(int64_t *m) {
     memory[*(m+3)] = get_arg(m, 1) * get_arg(m, 2);
 }
 
-static void input(int64_t *m) {
+void input(int64_t *m) {
+    int num = 0;
+#ifndef CUSTOM_INPUT
     char str[100] = "\0";
     printf("\n>");
     fgets(str, 100, stdin);
-    memory[*(m+1)] = strtol(str, NULL, 10);
+    num = strtol(str, NULL, 10);
+#else
+    num = get_custom_input();
+#endif
+    memory[*(m+1)] = num;
 }
 
-static void output(int64_t *m) {
-    printf("%ld\n", get_arg(m, 1));
+void output(int64_t *m) {
+    int64_t num = get_arg(m, 1);
+#ifndef CUSTOM_OUTPUT
+    printf("%ld\n", num);
+#else
+    put_custom_output(num);
+#endif
 }
 
 static void halt(int64_t *m)
@@ -226,7 +241,9 @@ void process()
     struct Op instruction = get_op_by_addr(pc);
     while(!halted)
     {
+        #ifdef DEBUG_INST
         disas_inst(pc);
+        #endif
         if (instruction.operation) instruction.operation(&memory[pc]);
         pc += instruction.argcount + 1;
         instruction = get_op_by_addr(pc);
@@ -239,7 +256,7 @@ void process()
 int parse_memory(char* str) {
     static int index = 0;
     if (index == 0) memset(memory_initial, 0, sizeof(memory));
-    printf("Parsing numbers\n");
+    // printf("Parsing numbers\n");
 
     char* token = strtok(str, ",\n");
     while(token != NULL)
