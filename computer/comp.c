@@ -6,11 +6,12 @@
 
 #define LINELEN (0x4000) // maximum length of lines to be read
 
-#define INST_HALT   99
-#define INST_ADD     1
-#define INST_MUL     2
-#define INST_INPUT   3
-#define INST_OUTPUT  4
+#define INST_INVALID  0
+#define INST_HALT    99
+#define INST_ADD      1
+#define INST_MUL      2
+#define INST_INPUT    3
+#define INST_OUTPUT   4
 
 int64_t memory[MEMORY_MAX];
 static int64_t memory_initial[MEMORY_MAX];
@@ -74,6 +75,11 @@ struct Op {
 
 // static void (*operation[0xFF])(uint64_t, uint64_t, uint64_t) = {
 static struct Op operation[] = {
+    [INST_INVALID] = {
+        .name = "???",
+        .argcount = 0,
+        .operation = NULL,
+    },
     [INST_ADD] = {
         .name = "add",
         .argcount = 3,
@@ -101,9 +107,19 @@ static struct Op operation[] = {
     }
 };
 
+static struct Op get_op(int opindex) {
+    int index = opindex%100;
+    if (operation[index].name[0] == 0) return operation[INST_INVALID];
+    return operation[opindex%100];
+}
+
+static struct Op get_op_by_addr(int addr) {
+    return get_op(memory[addr]);
+}
+
 void disas_inst(int addr)
 {
-    struct Op instruction = operation[memory[addr]];
+    struct Op instruction = get_op_by_addr(addr);
     printf("%s", instruction.name);
     for (int i = 0; i < instruction.argcount; i++)
     {
@@ -115,12 +131,12 @@ void disas_inst(int addr)
 void disas_prog(int len)
 {
     int pc = 0;
-    struct Op instruction = operation[memory[pc]];
+    struct Op instruction = get_op_by_addr(pc);
     while(pc < len)
     {
         disas_inst(pc);
         pc += instruction.argcount + 1;
-        instruction = operation[memory[pc]];
+        instruction = get_op_by_addr(pc);
     }
     fflush(stdout);
 }
@@ -131,12 +147,12 @@ void process()
     int pc = 0;
     halted = 0;
 
-    struct Op instruction = operation[memory[pc]];
+    struct Op instruction = get_op_by_addr(pc);
     while(!halted)
     {
         instruction.operation(&memory[pc]);
         pc += instruction.argcount + 1;
-        instruction = operation[memory[pc]];
+        instruction = get_op_by_addr(pc);
     }
 }
 
@@ -149,7 +165,7 @@ int parse_memory(char* str) {
     char* token = strtok(str, ",\n");
     while(token != NULL)
     {
-        memory_initial[index] = (uint8_t)strtoul(token, NULL, 10);
+        memory_initial[index] = (int64_t)strtol(token, NULL, 10);
         index++;
         token = strtok(NULL, ",\n");
     }
