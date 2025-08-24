@@ -6,21 +6,30 @@
 
 #define LINELEN (0x4000) // maximum length of lines to be read
 
-#define INST_INVALID  0
-#define INST_HALT    99
-#define INST_ADD      1
-#define INST_MUL      2
-#define INST_INPUT    3
-#define INST_OUTPUT   4
+#define INST_INVALID     0
+#define INST_HALT       99
+#define INST_ADD         1
+#define INST_MUL         2
+#define INST_INPUT       3
+#define INST_OUTPUT      4
+#define INST_JUMP_TRUE   5
+#define INST_JUMP_FALSE  6
+#define INST_LESS        7
+#define INST_EQUAL       8
 
 int64_t memory[MEMORY_MAX];
 static int64_t memory_initial[MEMORY_MAX];
 static uint8_t halted = 0;
+static int pc = 0;
 
 void memdump(int len)
 {
-    for(int i = 0; i < len; i++){
-        printf("%lu,", memory[i]);
+    for (int row = 0; row < len/10; row++){
+        printf("%3d: ", row*10);
+        for(int i = 0; i + row*10 < len && i < 10; i++){
+            printf("%6ld\t", memory[i+row*10]);
+        }
+        printf("\n");
     }
     printf("\n");
 }
@@ -29,13 +38,20 @@ void reset_memory() {
     memcpy(memory, memory_initial, sizeof(memory));
 }
 
-static int64_t get_arg(int64_t *m, int n) {
-    int64_t inst = *m / 100;
+// Is the nth arg immediate?
+static int is_imm(int64_t inst, int n)
+{
+    inst /= 100;
     for (int i = 1; i < n; i++) {
         inst /= 10;
     }
     // Immediate mode
-    if (inst & 1) {
+    return inst & 1;
+}
+
+static int64_t get_arg(int64_t *m, int n) {
+    // Immediate mode
+    if (is_imm(*m, n)) {
         return *(m+n);
     }
     else {
@@ -67,13 +83,48 @@ static void halt(int64_t *m)
     halted = 1;
 }
 
+static void jump_true(int64_t *m)
+{
+    int64_t arg1 = get_arg(m, 1);
+    if (arg1 != 0) {
+        pc = get_arg(m, 2) - 3;
+    }
+}
+
+static void jump_false(int64_t *m)
+{
+    int64_t arg1 = get_arg(m, 1);
+    if (arg1 == 0) {
+        pc = get_arg(m, 2) - 3;
+    }
+}
+
+static void less_than(int64_t *m)
+{
+    int val = 0;
+    if (get_arg(m, 1) < get_arg(m, 2))
+    {
+        val = 1;
+    }
+    memory[*(m+3)] = val;
+}
+
+static void equal(int64_t *m)
+{
+    int val = 0;
+    if (get_arg(m, 1) == get_arg(m, 2))
+    {
+        val = 1;
+    }
+    memory[*(m+3)] = val;
+}
+
 struct Op {
     char name[4];
     int argcount;
     void (*operation)(int64_t*);
 };
 
-// static void (*operation[0xFF])(uint64_t, uint64_t, uint64_t) = {
 static struct Op operation[] = {
     [INST_INVALID] = {
         .name = "???",
@@ -100,6 +151,26 @@ static struct Op operation[] = {
         .argcount = 1,
         .operation = output,
     },
+    [INST_JUMP_TRUE] = {
+        .name = "jpt",
+        .argcount = 2,
+        .operation = jump_true,
+    },
+    [INST_JUMP_FALSE] = {
+        .name = "jpf",
+        .argcount = 2,
+        .operation = jump_false,
+    },
+    [INST_LESS] = {
+        .name = "lss",
+        .argcount = 3,
+        .operation = less_than,
+    },
+    [INST_EQUAL] = {
+        .name = "equ",
+        .argcount = 3,
+        .operation = equal,
+    },
     [INST_HALT] = {
         .name = "hlt",
         .argcount = 0,
@@ -120,10 +191,15 @@ static struct Op get_op_by_addr(int addr) {
 void disas_inst(int addr)
 {
     struct Op instruction = get_op_by_addr(addr);
-    printf("%s", instruction.name);
+    printf("%04d: %4ld %s", addr, memory[addr], instruction.name);
     for (int i = 0; i < instruction.argcount; i++)
     {
-        printf("\t%lu", memory[addr+i+1]);
+        if (is_imm(memory[addr], i+1)) {
+            printf("\t#%ld", memory[addr+i+1]);
+        }
+        else {
+            printf("\t%ld->#%ld", memory[addr+i+1], memory[memory[addr+i+1]]);
+        }
     }
     printf("\n");
 }
@@ -144,23 +220,26 @@ void disas_prog(int len)
 
 void process()
 {
-    int pc = 0;
+    pc = 0;
     halted = 0;
 
     struct Op instruction = get_op_by_addr(pc);
     while(!halted)
     {
-        instruction.operation(&memory[pc]);
+        disas_inst(pc);
+        if (instruction.operation) instruction.operation(&memory[pc]);
         pc += instruction.argcount + 1;
         instruction = get_op_by_addr(pc);
     }
 }
 
+// TODO this can cut off a number in the middle. Fix that
 // This function can be called multiple times
 // it remembers where it left off
 int parse_memory(char* str) {
     static int index = 0;
     if (index == 0) memset(memory_initial, 0, sizeof(memory));
+    printf("Parsing numbers\n");
 
     char* token = strtok(str, ",\n");
     while(token != NULL)

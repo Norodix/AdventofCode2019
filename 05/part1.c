@@ -16,19 +16,17 @@ int main(int argc, char** argv) {
         printf("Could not open file\n");
         return -2;
     }
-    char line[1024];
+    char line[0x8000];
     fgets(line, sizeof(line), f);
 
     int memlen = 0;
     while (!feof(f)) {
         memlen = parse_memory(line);
         reset_memory();
-        memdump(memlen);
         fgets(line, sizeof(line), f);
     }
     reset_memory();
     memdump(memlen);
-    disas_prog(memlen);
     process();
     return 0;
 }
