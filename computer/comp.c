@@ -43,6 +43,14 @@ int64_t ring_pop(ringbuffer *r, int64_t *v)
     }
 }
 
+void dump_buffer(ringbuffer *r) {
+    printf("buffer %d - %d\n{", r->read_index, r->write_index);
+    for(int j = r->read_index; j < r->write_index; j++) {
+        printf("%ld ", r->buffer[j]);
+    }
+    printf("}\n");
+}
+
 void memdump(computer* c, int len)
 {
     for (int row = 0; row < len/10; row++){
@@ -56,6 +64,9 @@ void memdump(computer* c, int len)
 }
 
 void reset_memory(computer* c) {
+    c->pc = 0;
+    c->halted = 0;
+    c->blocked = 0;
     memcpy(c->memory, memory_initial, sizeof(c->memory));
 }
 
@@ -238,7 +249,6 @@ void disas_inst(computer* c, int addr)
 
 void process(computer* c)
 {
-    c->pc = 0;
     c->halted = 0;
     c->blocked = 0;
 
@@ -252,7 +262,7 @@ void process(computer* c)
         // If blocked, do not advance the counter but just exit the process, we will pick itup here
         if (c->blocked)
         {
-            printf("Blocking\n");
+            // printf("Blocking\n");
             return;
         }
         c->pc += instruction.argcount + 1;

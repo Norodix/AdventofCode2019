@@ -29,6 +29,7 @@ int parse_memory(char* str);
 
 void ring_push(ringbuffer *r, int64_t v);
 int64_t ring_pop(ringbuffer *r, int64_t *v);
+void dump_buffer(ringbuffer *r);
 void process(computer*);
 void disas_prog(computer*, int len);
 void disas_inst(computer*, int);

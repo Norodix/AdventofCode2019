@@ -1,8 +1,14 @@
 INC = ../computer/
-OBJ = part1.o ../computer/comp.o
+OBJ = ../computer/comp.o
 DEF = -DCUSTOM_INPUT -DCUSTOM_OUTPUT
 
-part1: $(OBJ)
+all: part1 part2
+
+part2: $(OBJ) part2.o
+
+part1: $(OBJ) part1.o
+
+%: %.o
 	gcc $^ -o $@ -g
 
 %.o : %.c
