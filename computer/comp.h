@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#define MEMORY_MAX (0x100000)
+#define MEMORY_MAX (0x10000)
 #define IO_BUFFER_LEN 100
 
 typedef struct ringbuffer {
@@ -10,7 +10,8 @@ typedef struct ringbuffer {
 }ringbuffer;
 
 typedef struct computer {
-    int64_t memory[MEMORY_MAX];
+    int64_t *memory;
+    int64_t memsize; // in bytes
     uint8_t halted;
     int pc;
     int blocked;
@@ -26,7 +27,7 @@ typedef struct computer {
  * @return Returns the number of memory addresses written
  */
 int parse_memory(char* str);
-
+void init_computer(computer *c);
 void ring_push(ringbuffer *r, int64_t v);
 int64_t ring_pop(ringbuffer *r, int64_t *v);
 void dump_buffer(ringbuffer *r);

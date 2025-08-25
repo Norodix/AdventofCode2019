@@ -56,6 +56,14 @@ void dump_buffer(ringbuffer *r) {
     printf("}\n");
 }
 
+void init_computer(computer *c)
+{
+    c->memsize = MEMORY_MAX * sizeof(int64_t);
+    free(c->memory);
+    c->memory = (int64_t*) malloc(c->memsize);
+    memset(c->memory, 0, c->memsize);
+}
+
 void memdump(computer* c, int len)
 {
     for (int row = 0; row < len/10; row++){
@@ -73,7 +81,9 @@ void reset_memory(computer* c) {
     c->halted = 0;
     c->blocked = 0;
     c->relative_base = 0;
-    memcpy(c->memory, memory_initial, sizeof(c->memory));
+    c->memsize = MEMORY_MAX * sizeof(int64_t);
+    c->memory = realloc(c->memory, c->memsize);
+    memcpy(c->memory, memory_initial, c->memsize);
 }
 
 void reset_buffer(ringbuffer* r)
@@ -91,8 +101,21 @@ static int get_arg_mode(int64_t inst, int n)
     return inst;
 }
 
-static int get_addr(computer* c, int64_t *m, int n) {
-    int addr = 0;
+static void double_mem(computer *c)
+{
+    printf("Double the memory of computer to %lu\n", c->memsize * 2);
+    fflush(stdout);
+    printf("Old pointer %p\n", c->memory);
+    c->memory = (int64_t*) realloc(c->memory, c->memsize * 2);
+    printf("New pointer %p\n", c->memory);
+    memset(c->memory + (c->memsize / sizeof(int64_t)), 0, c->memsize);
+    c->memsize *= 2;
+    printf("Doubling done\n");
+}
+
+static int get_addr(computer* c, int n) {
+    int addr = -1;
+    int64_t *m = &c->memory[c->pc];
     switch (get_arg_mode(*m, n)){
         case MODE_POSITION:
             addr = *(m+n);
@@ -100,42 +123,41 @@ static int get_addr(computer* c, int64_t *m, int n) {
         case MODE_RELATIVE:
             addr = *(m+n) + c->relative_base;
             break;
+        case MODE_DIRECT:
+            // The direct value must be stored in the memory so just return the address where
+            addr = c->pc + n; // Pointer arithmetic so their difference is directly the address
+            break;
+    }
+    while (c->memsize <= addr * sizeof(int64_t))
+    {
+        double_mem(c);
     }
     return addr;
 }
 
-static int64_t get_arg(computer* c, int64_t *m, int n) {
+static int64_t get_arg(computer* c, int n) {
     int64_t argument = 0;
-    switch (get_arg_mode(*m, n)){
-        case MODE_POSITION:
-            argument = c->memory[*(m+n)];
-            break;
-        case MODE_DIRECT:
-            argument = *(m+n);
-            break;
-        case MODE_RELATIVE:
-            argument = c->memory[*(m+n) + c->relative_base];
-            break;
-    }
+    int addr = get_addr(c, n); // This call also ensures the memory size is correct
+    argument = c->memory[addr];
     return argument;
 }
 
-static void add(computer* c, int64_t *m) {
-    int addr = get_addr(c, m, 3);
-    c->memory[addr] = get_arg(c, m, 1) + get_arg(c, m, 2);
+static void add(computer* c) {
+    int addr = get_addr(c, 3);
+    c->memory[addr] = get_arg(c, 1) + get_arg(c, 2);
 }
 
-static void mult(computer* c, int64_t *m) {
-    int addr = get_addr(c, m, 3);
-    c->memory[addr] = get_arg(c, m, 1) * get_arg(c, m, 2);
+static void mult(computer* c) {
+    int addr = get_addr(c, 3);
+    c->memory[addr] = get_arg(c, 1) * get_arg(c, 2);
 }
 
-static void base_adjust(computer* c, int64_t *m) {
-    c->relative_base += get_arg(c, m, 1);
+static void base_adjust(computer* c) {
+    c->relative_base += get_arg(c, 1);
     // printf("base adjusted to %d\n", c->relative_base);
 }
 
-static void input(computer* c, int64_t *m) {
+static void input(computer* c) {
     int64_t num = 0;
     int success = 0;
     if (c->in_buffer == NULL)
@@ -153,12 +175,12 @@ static void input(computer* c, int64_t *m) {
             return;
         }
     }
-    int addr = get_addr(c, m, 1);
+    int addr = get_addr(c, 1);
     c->memory[addr] = num;
 }
 
-static void output(computer* c, int64_t *m) {
-    int64_t num = get_arg(c, m, 1);
+static void output(computer* c) {
+    int64_t num = get_arg(c, 1);
     if (c->out_buffer == NULL) {
         printf("%ld\n", num);
     }
@@ -167,53 +189,53 @@ static void output(computer* c, int64_t *m) {
     }
 }
 
-static void halt(computer* c, int64_t *m)
+static void halt(computer* c)
 {
     c->halted = 1;
 }
 
-static void jump_true(computer* c, int64_t *m)
+static void jump_true(computer* c)
 {
-    int64_t arg1 = get_arg(c, m, 1);
+    int64_t arg1 = get_arg(c, 1);
     if (arg1 != 0) {
-        c->pc = get_arg(c, m, 2) - 3;
+        c->pc = get_arg(c, 2) - 3;
     }
 }
 
-static void jump_false(computer* c, int64_t *m)
+static void jump_false(computer* c)
 {
-    int64_t arg1 = get_arg(c, m, 1);
+    int64_t arg1 = get_arg(c, 1);
     if (arg1 == 0) {
-        c->pc = get_arg(c, m, 2) - 3;
+        c->pc = get_arg(c, 2) - 3;
     }
 }
 
-static void less_than(computer* c, int64_t *m)
+static void less_than(computer* c)
 {
     int val = 0;
-    if (get_arg(c, m, 1) < get_arg(c, m, 2))
+    if (get_arg(c, 1) < get_arg(c, 2))
     {
         val = 1;
     }
-    int addr = get_addr(c, m, 3);
+    int addr = get_addr(c, 3);
     c->memory[addr] = val;
 }
 
-static void equal(computer* c, int64_t *m)
+static void equal(computer* c)
 {
     int val = 0;
-    if (get_arg(c, m, 1) == get_arg(c, m, 2))
+    if (get_arg(c, 1) == get_arg(c, 2))
     {
         val = 1;
     }
-    int addr = get_addr(c, m, 3);
+    int addr = get_addr(c, 3);
     c->memory[addr] = val;
 }
 
 struct Op {
     char name[4];
     int argcount;
-    void (*operation)(computer*, int64_t*);
+    void (*operation)(computer*);
 };
 
 static struct Op operation[] = {
@@ -291,7 +313,7 @@ void disas_inst(computer* c, int addr)
     for (int i = 0; i < instruction.argcount; i++)
     {
         enum arg_mode mode = get_arg_mode(addr, i+1);
-        int64_t arg = get_arg(c, c->memory+addr, i+1);
+        int64_t arg = get_arg(c, i+1);
         switch (mode) {
             case MODE_DIRECT:
                 printf("\t#%ld", arg);
@@ -318,7 +340,7 @@ void process(computer* c)
         #ifdef DEBUG_INST
         disas_inst(c, c->pc);
         #endif
-        if (instruction.operation) instruction.operation(c, &c->memory[c->pc]);
+        if (instruction.operation) instruction.operation(c);
         // If blocked, do not advance the counter but just exit the process, we will pick itup here
         if (c->blocked)
         {
@@ -346,4 +368,3 @@ int parse_memory(char* str) {
     }
     return index;
 }
-
