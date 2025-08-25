@@ -15,6 +15,7 @@ typedef struct computer {
     uint8_t halted;
     int pc;
     int blocked;
+    int relative_base;
     struct ringbuffer *in_buffer;
     struct ringbuffer *out_buffer;
 }computer;

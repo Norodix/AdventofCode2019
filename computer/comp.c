@@ -16,6 +16,13 @@
 #define INST_JUMP_FALSE  6
 #define INST_LESS        7
 #define INST_EQUAL       8
+#define INST_BASE_ADJ    9
+
+enum arg_mode{
+    MODE_POSITION = 0,
+    MODE_DIRECT,
+    MODE_RELATIVE,
+};
 
 static int64_t memory_initial[MEMORY_MAX];
 
@@ -67,6 +74,7 @@ void reset_memory(computer* c) {
     c->pc = 0;
     c->halted = 0;
     c->blocked = 0;
+    c->relative_base = 0;
     memcpy(c->memory, memory_initial, sizeof(c->memory));
 }
 
@@ -75,50 +83,92 @@ void reset_buffer(ringbuffer* r)
     memset(r, 0, sizeof(ringbuffer));
 }
 
-// Is the nth arg immediate?
-static int is_imm(int64_t inst, int n)
+static int get_arg_mode(int64_t inst, int n)
 {
     inst /= 100;
     for (int i = 1; i < n; i++) {
         inst /= 10;
     }
-    // Immediate mode
-    return inst & 1;
+    inst %= 10;
+    return inst;
+}
+
+static int get_addr(computer* c, int64_t *m, int n) {
+    int addr = 0;
+    switch (get_arg_mode(*m, n)){
+        case MODE_POSITION:
+            addr = *(m+n);
+            break;
+        case MODE_RELATIVE:
+            addr = *(m+n) + c->relative_base;
+            break;
+    }
+    return addr;
 }
 
 static int64_t get_arg(computer* c, int64_t *m, int n) {
-    // Immediate mode
-    if (is_imm(*m, n)) {
-        return *(m+n);
+    int64_t argument = 0;
+    switch (get_arg_mode(*m, n)){
+        case MODE_POSITION:
+            argument = c->memory[*(m+n)];
+            break;
+        case MODE_DIRECT:
+            argument = *(m+n);
+            break;
+        case MODE_RELATIVE:
+            // printf("Accessing meomory at %ld\n", *(m+n) + c->relative_base);
+            argument = c->memory[*(m+n) + c->relative_base];
+            // printf("Argument %ld\n", argument);
+            break;
     }
-    else {
-        return c->memory[*(m+n)];
-    }
+    return argument;
 }
 
 static void add(computer* c, int64_t *m) {
-    c->memory[*(m+3)] = get_arg(c, m, 1) + get_arg(c, m, 2);
+    int addr = get_addr(c, m, 3);
+    c->memory[addr] = get_arg(c, m, 1) + get_arg(c, m, 2);
 }
 
 static void mult(computer* c, int64_t *m) {
-    c->memory[*(m+3)] = get_arg(c, m, 1) * get_arg(c, m, 2);
+    int addr = get_addr(c, m, 3);
+    c->memory[addr] = get_arg(c, m, 1) * get_arg(c, m, 2);
 }
 
-void input(computer* c, int64_t *m) {
+static void base_adjust(computer* c, int64_t *m) {
+    c->relative_base += get_arg(c, m, 1);
+    // printf("base adjusted to %d\n", c->relative_base);
+}
+
+static void input(computer* c, int64_t *m) {
     int64_t num = 0;
     int success = 0;
-    success = ring_pop(c->in_buffer, &num);
-    if (!success)
+    if (c->in_buffer == NULL)
     {
-        c->blocked = 1;
-        return;
+        char str[100] = "\0";
+        printf("\n>");
+        fgets(str, 100, stdin);
+        num = strtol(str, NULL, 10);
     }
-    c->memory[*(m+1)] = num;
+    else {
+        success = ring_pop(c->in_buffer, &num);
+        if (!success)
+        {
+            c->blocked = 1;
+            return;
+        }
+    }
+    int addr = get_addr(c, m, 1);
+    c->memory[addr] = num;
 }
 
-void output(computer* c, int64_t *m) {
+static void output(computer* c, int64_t *m) {
     int64_t num = get_arg(c, m, 1);
-    ring_push(c->out_buffer, num);
+    if (c->out_buffer == NULL) {
+        printf("%ld\n", num);
+    }
+    else {
+        ring_push(c->out_buffer, num);
+    }
 }
 
 static void halt(computer* c, int64_t *m)
@@ -149,7 +199,8 @@ static void less_than(computer* c, int64_t *m)
     {
         val = 1;
     }
-    c->memory[*(m+3)] = val;
+    int addr = get_addr(c, m, 3);
+    c->memory[addr] = val;
 }
 
 static void equal(computer* c, int64_t *m)
@@ -159,7 +210,8 @@ static void equal(computer* c, int64_t *m)
     {
         val = 1;
     }
-    c->memory[*(m+3)] = val;
+    int addr = get_addr(c, m, 3);
+    c->memory[addr] = val;
 }
 
 struct Op {
@@ -214,6 +266,11 @@ static struct Op operation[] = {
         .argcount = 3,
         .operation = equal,
     },
+    [INST_BASE_ADJ] = {
+        .name = "bsa",
+        .argcount = 1,
+        .operation = base_adjust,
+    },
     [INST_HALT] = {
         .name = "hlt",
         .argcount = 0,
@@ -237,11 +294,18 @@ void disas_inst(computer* c, int addr)
     printf("%04d: %4ld %s", addr, c->memory[addr], instruction.name);
     for (int i = 0; i < instruction.argcount; i++)
     {
-        if (is_imm(c->memory[addr], i+1)) {
-            printf("\t#%ld", c->memory[addr+i+1]);
-        }
-        else {
-            printf("\t%ld->#%ld", c->memory[addr+i+1], c->memory[c->memory[addr+i+1]]);
+        enum arg_mode mode = get_arg_mode(addr, i+1);
+        int64_t arg = get_arg(c, c->memory+addr, i+1);
+        switch (mode) {
+            case MODE_DIRECT:
+                printf("\t#%ld", arg);
+                break;
+            case MODE_POSITION:
+                printf("\t%ld->#%ld", c->memory[addr+i+1], arg);
+                break;
+            case MODE_RELATIVE:
+                printf("\t%ld+%d->#%ld", c->memory[addr+i+1], c->relative_base, arg);
+                break;
         }
     }
     printf("\n");
@@ -256,7 +320,7 @@ void process(computer* c)
     while(!c->halted)
     {
         #ifdef DEBUG_INST
-        disas_inst(c, pc);
+        disas_inst(c, c->pc);
         #endif
         if (instruction.operation) instruction.operation(c, &c->memory[c->pc]);
         // If blocked, do not advance the counter but just exit the process, we will pick itup here
