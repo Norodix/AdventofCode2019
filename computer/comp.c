@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <comp.h>
 
-#define LINELEN (0x4000) // maximum length of lines to be read
-
 #define INST_INVALID     0
 #define INST_HALT       99
 #define INST_ADD         1
@@ -116,9 +114,7 @@ static int64_t get_arg(computer* c, int64_t *m, int n) {
             argument = *(m+n);
             break;
         case MODE_RELATIVE:
-            // printf("Accessing meomory at %ld\n", *(m+n) + c->relative_base);
             argument = c->memory[*(m+n) + c->relative_base];
-            // printf("Argument %ld\n", argument);
             break;
     }
     return argument;
@@ -326,7 +322,6 @@ void process(computer* c)
         // If blocked, do not advance the counter but just exit the process, we will pick itup here
         if (c->blocked)
         {
-            // printf("Blocking\n");
             return;
         }
         c->pc += instruction.argcount + 1;
@@ -339,7 +334,7 @@ void process(computer* c)
 // it remembers where it left off
 int parse_memory(char* str) {
     static int index = 0;
-    if (index == 0) memset(memory_initial, 0, sizeof(memory));
+    if (index == 0) memset(memory_initial, 0, sizeof(memory_initial));
     // printf("Parsing numbers\n");
 
     char* token = strtok(str, ",\n");

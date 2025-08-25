@@ -1,8 +1,7 @@
 #include <stdint.h>
 
-#define MEMORY_MAX (0x1000)
+#define MEMORY_MAX (0x100000)
 #define IO_BUFFER_LEN 100
-extern int64_t memory[MEMORY_MAX];
 
 typedef struct ringbuffer {
     int64_t buffer[100];
