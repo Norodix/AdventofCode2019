@@ -3,7 +3,7 @@ OBJ =
 DEF =
 DEPS=$(wildcard $(INC)/*.h)
 DEPS+=$(wildcard *.h)
-OPS=-O3
+OPS=-O3 -lm
 
 ifdef DBG
 	DEF += -DDEBUG_INST
