@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdint.h>
 
+computer c = {0};
+
 int main(int argc, char** argv) {
     // Initialize to 0
 
@@ -22,11 +24,10 @@ int main(int argc, char** argv) {
     int memlen = 0;
     while (!feof(f)) {
         memlen = parse_memory(line);
-        reset_memory();
         fgets(line, sizeof(line), f);
     }
-    memdump(memlen);
-    reset_memory();
-    process();
+    reset_memory(&c);
+    memdump(&c, memlen);
+    process(&c);
     return 0;
 }
