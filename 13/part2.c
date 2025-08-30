@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <ncurses.h>
 
 computer c = {0};
 ringbuffer out, in;
@@ -18,15 +19,8 @@ char tiles[FIELDSIZE][FIELDSIZE];
 int read_direction() {
     int ret = 0;
     // Read input direction
-    char dir = getc(stdin);
+    char dir = getch();
     int n = 0;
-    // while(n != 1)
-    // {
-    //     n = read(stdin, &dir, 1);
-    //     printf("%d", n);
-    //     fflush(stdout);
-    //     usleep(100);
-    // }
     switch (dir) {
         case 'a':
         case 'A':
@@ -47,16 +41,18 @@ void clear_screen()
     printf("\x1B[2J");
 }
 
-void print_tiles()
+void print_tiles(WINDOW* w)
 {
+    box(w, 0, 0);
     for (int r = 0; r <= maxy; r++)
     {
+        wmove(w, r+1, 1);
         for (int c = 0; c <= maxx; c++)
         {
-            printf("%c", tiles[r][c]);
+            wprintw(w, "%c", tiles[r][c]);
         }
-        printf("\n");
     }
+    wrefresh(w);
 }
 
 char symbols[] =
@@ -100,6 +96,7 @@ int main(int argc, char** argv) {
     // Insert quarter
     int64_t score = 0;
     c.memory[0] = 2;
+    WINDOW *w = NULL;
     while (!c.halted)
     {
         process(&c);
@@ -112,16 +109,19 @@ int main(int argc, char** argv) {
             if (x == -1) {
                 score = v;
             }
-            printf("(%d, %d) -> %c\n", x, y, symbols[v]);
             tiles[y][x] = symbols[v];
 
             maxx = MAX(x, maxx);
             maxy = MAX(y, maxy);
         }
-        clear_screen();
-        print_tiles();
-        printf("Score: %d\n", score);
-        // ring_push(&in, read_direction());
+        if (w == NULL) {
+            initscr();
+            cbreak();
+            noecho();
+            w = newwin(maxy+3, maxx+3, 0, 0);
+            wrefresh(w);
+        }
+        print_tiles(w);
         int padx, ballx;
         for (int r = 0; r <= maxy; r++) {
             for (int c = 0; c <= maxx; c++) {
@@ -130,9 +130,17 @@ int main(int argc, char** argv) {
             }
         }
         int dir = padx < ballx ? 1 : padx > ballx ? -1 : 0;
+        // Use this for iteractive play
+        // int dir = read_direction();
+        usleep(1000);
         ring_push(&in, dir);
     }
-    printf("computer halted %d \n", c.halted);
+    delwin(w);
+    nocbreak();
+    echo();
+    endwin();
 
+    printf("computer halted %d \n", c.halted);
+    printf("Score: %d\n", score);
     return 0;
 }

@@ -3,7 +3,7 @@ OBJ = ../computer/comp.o
 DEF = -DCUSTOM_INPUT -DCUSTOM_OUTPUT
 DEPS=$(wildcard $(INC)/*.h)
 DEPS+=$(wildcard *.h)
-OPS=-O3
+OPS=-O3 -lncurses
 
 ifdef DBG
 	DEF += -DDEBUG_INST

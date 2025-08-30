@@ -1,10 +1,10 @@
 #include <stdint.h>
 
 #define MEMORY_MAX (0x10000)
-#define IO_BUFFER_LEN 100
+#define IO_BUFFER_LEN 10000
 
 typedef struct ringbuffer {
-    int64_t buffer[100];
+    int64_t buffer[IO_BUFFER_LEN];
     int write_index;
     int read_index;
 }ringbuffer;
