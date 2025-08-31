@@ -153,6 +153,7 @@ void map_neighbors(computer* c, int posx, int posy) {
         }
         char* t = get_tile_by_dir(posy, posx, i);
         if (neighbor == 0) *t = WALL;
+        if (neighbor == 2) *t = OXYGEN;
     }
 }
 
@@ -163,16 +164,20 @@ void take_step(computer* c, int dir) {
         ring_pop(c->out_buffer, &response);
 }
 
+int found_goal = 0;
+int goal_steps = 0;
 void dfs(computer* c, int posx, int posy)
 {
+    if (tiles[posy][posx] == OXYGEN) found_goal = 1;
+    // usleep(10000);
     map_neighbors(c, posx, posy);
-    print_center(w, posx, posy, 30);
-    for (int i = 1; i <= 4; i++)
+    print_center(w, posx, posy, 25);
+    for (int i = 1; i <= 4 && found_goal == 0; i++)
     {
         char* dirtile = get_tile_by_dir(posy, posx, i);
-        if (*dirtile == EMPTY)
+        if (*dirtile == EMPTY || *dirtile == OXYGEN)
         {
-            *dirtile = WALKED;
+            if (*dirtile == EMPTY) *dirtile = WALKED;
             int newy = posy;
             int newx = posx;
             switch(i)
@@ -192,6 +197,7 @@ void dfs(computer* c, int posx, int posy)
             }
             take_step(c, i);
             dfs(c, newx, newy);
+            goal_steps += found_goal;
             take_step(c, opposite_dir(i));
         }
     }
@@ -234,100 +240,17 @@ int main(int argc, char** argv) {
     noecho();
     refresh();
     w = newwin(40, 40, 0, 0);
-    while (!c.halted)
-    {
-        tiles[posy][posx] = WALKED;
-        map_neighbors(&c, posx, posy);
-        print_center(w, posx, posy, 30);
-        int keepgoing = 0;
-        for (int i = 1; i <= 4; i++)
-        {
-            char* dirtile = get_tile_by_dir(posy, posx, i);
-            if (*dirtile == EMPTY)
-            {
-                dirstack[++stack_pointer] = i;
-                *dirtile = WALKED;
-                keepgoing = 1;
-            }
-        }
-        // if we couldn't add anything to the stack, take a step back
-        int dir;
-        if (keepgoing == 0)
-        {
-            dir = opposite_dir(dirstack[stack_pointer--]);
-        }
-        else
-        {
-            dir = dirstack[stack_pointer];
-        }
-        if (stack_pointer < 0) break;
-        // int dir = read_direction();
-        if (dir == 0) continue;
-        ring_push(&in, dir);
-        process(&c);
-        int64_t response;
-        ring_pop(&out, &response);
-        int newy = posy;
-        int newx = posx;
-        switch(dir)
-        {
-            case NORTH:
-                newy--;
-                break;
-            case SOUTH:
-                newy++;
-                break;
-            case WEST:
-                newx--;
-                break;
-            case EAST:
-                newx++;
-                break;
-        }
-        if (response == 1) {
-            posx = newx;
-            posy = newy;
-            tiles[posy][posx] = WALKED;
-        }
-        if (response == 0) {
-            tiles[newy][newx] = WALL;
-        }
-        if (response == 2) {
-            posx = newx;
-            posy = newy;
-            tiles[posy][posx] = WALKED; // TODO fix this shit
-            break;
-        }
-    }
-
-    // Animate the journey backwards
-    while (posy != CENTER || posx != CENTER) {
-        usleep(200000);
-        int dir = opposite_dir(dirstack[stack_pointer--]);
-        switch(dir)
-        {
-            case NORTH:
-                posy--;
-                break;
-            case SOUTH:
-                posy++;
-                break;
-            case WEST:
-                posx--;
-                break;
-            case EAST:
-                posx++;
-                break;
-        }
-        print_tiles(w, posx, posy, 30);
-    }
-    print_center(w, -1000, -1000, 30);
+    dfs(&c, posx, posy);
+    print_center(w, -1000, -1000, 25);
     getch();
-    print_center(w, -1000, -1000, 30);
+
+    // clear up terminal
     delwin(w);
     nocbreak();
     echo();
     endwin();
+
+    printf("Found goal and it took %d steps\n", goal_steps);
 
     return 0;
 }
