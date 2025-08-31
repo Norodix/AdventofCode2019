@@ -35,9 +35,7 @@ local get_requirements = function(result, leftovers)
 	local requirements = {}
 	for ing, ingnum in pairs(result) do
 		-- account for levtover reagents
-		if leftovers[ing] == nil then
-			leftovers[ing] = 0
-		end
+		leftovers[ing] = leftovers[ing] or 0
 		local sub = math.min(leftovers[ing], ingnum)
 		ingnum = ingnum - sub
 		leftovers[ing] = leftovers[ing] - sub
@@ -51,9 +49,7 @@ local get_requirements = function(result, leftovers)
 
 		-- add each precursor of this reaction n times to the requirements
 		for k, v in pairs(recipes[ing].ingredients) do
-			if requirements[k] == nil then
-				requirements[k] = 0
-			end
+			requirements[k] = requirements[k] or 0
 			requirements[k] = requirements[k] + n * v
 		end
 	end
