@@ -49,8 +49,9 @@ int main(int argc, char** argv) {
 
     fgets(line, LINELEN, f);
 
+    *strstr(line, "\n") = 0;
     for (int i = 0; i < 100; i++) {
-        transform_signal(line, strlen(line) - 1);
+        transform_signal(line, strlen(line));
         printf("%s\n", line);
     }
     printf("Final transformed signal is %s\n", line);
