@@ -26,3 +26,8 @@ test1: part1
 
 test2: part2
 	./part2 example3
+
+doc: index.html
+index.html: notes.md
+	pandoc --standalone --self-contained -f markdown+tex_math_dollars $< -t html5 --mathml -o $@
+
