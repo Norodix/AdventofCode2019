@@ -24,10 +24,12 @@ enum arg_mode{
 
 static int64_t memory_initial[MEMORY_MAX];
 
-void ring_push(ringbuffer *r, int64_t v){
-    // lets assume we never overwrite it... we will worry about it later
+int ring_push(ringbuffer *r, int64_t v){
+    if (r->write_index >= IO_BUFFER_LEN)
+        return 0;
     r->buffer[r->write_index] = v;
     r->write_index++;
+    return 1;
 }
 
 int64_t ring_pop(ringbuffer *r, int64_t *v)
@@ -185,7 +187,10 @@ static void output(computer* c) {
         printf("%ld\n", num);
     }
     else {
-        ring_push(c->out_buffer, num);
+        if (ring_push(c->out_buffer, num) == 0) {
+            c->blocked = 1;
+            return ;
+        }
     }
 }
 

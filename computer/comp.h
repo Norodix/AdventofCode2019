@@ -28,7 +28,7 @@ typedef struct computer {
  */
 int parse_memory(char* str);
 void init_computer(computer *c);
-void ring_push(ringbuffer *r, int64_t v);
+int ring_push(ringbuffer *r, int64_t v);
 int64_t ring_pop(ringbuffer *r, int64_t *v);
 void dump_buffer(ringbuffer *r);
 void process(computer*);
