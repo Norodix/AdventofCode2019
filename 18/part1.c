@@ -99,6 +99,42 @@ end:
     return ret;
 }
 
+// Distance rest at keys
+typedef struct drest {
+    char keys[27];
+    int row; // start row
+    int col; // start col
+    int value;
+} drest;
+
+drest* cache = NULL;
+int cache_len = 64;
+int cache_index = 0;
+
+void cache_push(drest v) {
+    if (cache == NULL) {
+        cache = malloc(sizeof(drest) * cache_len);
+    }
+    if (cache_index >= cache_len)
+    {
+        cache_len *= 2;
+        cache = realloc(cache, cache_len * sizeof(drest));
+    }
+    cache[cache_index++] = v;
+}
+
+int cache_get(char* keys, int row, int col) {
+    if (cache == NULL) return -1;
+    for (int i = 0; i < cache_len; i++) {
+        if (row == cache[i].row && col == cache[i].col)
+        {
+            if(strncmp(keys, cache[i].keys, MAXKEYS) == 0)
+                return cache[i].value;
+        }
+    }
+    return -1;
+}
+
 // TODO memoize based on keys left on map
 int solve(char** t, int rows, int cols, int start_row, int start_col) {
     char keys[MAXKEYS];
@@ -120,6 +156,8 @@ int solve(char** t, int rows, int cols, int start_row, int start_col) {
         }
     }
     printf("Keys left on map: %s\n", keys);
+    int cached_drest = cache_get(keys, start_row, start_col);
+    if (cached_drest >= 0) return cached_drest;
     // print_tiles(t, rows, cols);
 
     // Base case
@@ -150,6 +188,12 @@ int solve(char** t, int rows, int cols, int start_row, int start_col) {
         min_d = MIN(min_d, distance + distance_rest);
     }
 
+    drest r;
+    memcpy(r.keys, keys, MAXKEYS);
+    r.value = min_d;
+    r.row = start_row;
+    r.col = start_col;
+    cache_push(r);
     return min_d;
 }
 
