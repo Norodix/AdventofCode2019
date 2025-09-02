@@ -25,5 +25,13 @@ test1: part1
 	./part1 example2
 
 test2: part2
-	./part2 example3
+	./part2 example_p2_1
+	@echo expected 8
+	./part2 example_p2_2
+	@echo expected 24
+	./part2 example_p2_3
+	@echo expected 32
+	@echo This example file does not meet the quadrant expectations so its okay if it fails
+	./part2 example_p2_4
+	@echo expected 72
 
