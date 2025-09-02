@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <hashmap.h>
 
 char** tiles;
 #define MAXKEYS 26
-char keys[MAXKEYS];
 #define LINELEN 1000
 #define MIN(a, b) (a < b ? a : b)
 
@@ -24,6 +24,7 @@ typedef struct world_state {
     int cols[4];
     int steps_taken; // Total steps already taken to clear up the map this much
 } world_state;
+
 
 void print_tiles(char** tiles, int rows, int cols)
 {
@@ -106,48 +107,51 @@ end:
     return ret;
 }
 
-// Distance rest at keys
-typedef struct drest {
-    char keys[27];
-    int row; // start row
-    int col; // start col
-    int value;
-} drest;
 
 world_state* cache = NULL;
+struct hashmap *hmap = NULL;
 int cache_len = 64;
 int cache_index = 0;
-
-void cache_push(world_state state) {
-    // Manage cache size
-    if (cache == NULL) {
-        cache = malloc(sizeof(state) * cache_len);
-    }
-    if (cache_index >= cache_len)
-    {
-        cache_len *= 2;
-        cache = realloc(cache, cache_len * sizeof(state));
-    }
-
-    cache[cache_index++] = state;
-}
 
 world_state get_key(world_state state) {
     state.steps_taken = 0;
     return state;
 }
 
-int cache_get(world_state state) {
-    if (cache == NULL) return -1;
-    for (int i = 0; i < cache_len; i++) {
-        world_state state1 = get_key(state);
-        world_state state2 = get_key(cache[i]);
+static uint64_t user_hash(const void *item, uint64_t seed0, uint64_t seed1) {
+    world_state s = get_key(*((world_state*) item));
+    return hashmap_sip(&s, sizeof(world_state), seed0, seed1);
+}
 
-        if (memcmp(&state1, &state2, sizeof(world_state)) == 0) {
-                return cache[i].steps_taken;
-        }
+int user_compare(const void *a, const void *b, void *udata) {
+    world_state state1 = get_key(*(world_state*)a);
+    world_state state2 = get_key(*(world_state*)b);
+    return memcmp(&state1, &state2, sizeof(world_state));
+}
+
+void cache_push(world_state state) {
+    if (hmap == NULL) hmap = hashmap_new ( \
+        sizeof(world_state),
+        0, 0, 0,
+        user_hash,
+        user_compare,
+        NULL, NULL);
+
+    hashmap_set(hmap, &state);
+}
+
+
+int cache_hits = 0;
+int cache_get(world_state state) {
+    int ret = -1;
+    world_state *s;
+    if (hmap == NULL) return -1;
+    s = (world_state*)hashmap_get(hmap, &state);
+    if (s) {
+        ret = s->steps_taken;
+        cache_hits++;
     }
-    return -1;
+    return ret;
 }
 
 int get_quadrant(int rows, int cols, int r, int c) {
@@ -327,7 +331,7 @@ int main(int argc, char** argv) {
     // recursively solve for picking up each key in any order
     int min_solution = solve(tiles, rows, cols, state_0);
     printf("Minimum solution found: %d\n", min_solution);
+    printf("We had a total of %d cache hits\n", cache_hits);
 
     return 0;
 }
-

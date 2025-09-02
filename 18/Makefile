@@ -1,5 +1,5 @@
-INC = .
-OBJ =
+INC = -I. -I../hashmap.c/
+OBJ = ../hashmap.c/hashmap.o
 DEF =
 DEPS=$(wildcard $(INC)/*.h)
 DEPS+=$(wildcard *.h)
@@ -19,7 +19,7 @@ part1: $(OBJ) part1.o
 	gcc $^ -o $@ -g $(OPS)
 
 %.o : %.c $(DEPS)
-	gcc $< -c -o $@ -g -I$(INC) $(DEF) $(OPS)
+	gcc $< -c -o $@ -g $(INC) $(DEF) $(OPS)
 
 test1: part1
 	./part1 example2
