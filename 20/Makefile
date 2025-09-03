@@ -25,3 +25,6 @@ test1: part1
 	./part1 example
 	./part1 example2
 
+test2: part2
+	./part2 example3
+
