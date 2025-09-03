@@ -102,44 +102,6 @@ int bfs_search(node** t, int rows, int cols, node* from, node* to) {
     return ret;
 }
 
-// void test_bfs() {
-//     int rows = 10, cols = 10;
-//     char** t = malloc(sizeof(char*) * rows);
-//     for (int i = 0; i < cols; i++) {
-//         t[i] = malloc(sizeof(char) * cols);
-//     }
-//     char map[] = \
-//         "##########" \
-//         "#        #" \
-//         "#  #     #" \
-//         "#  #     #" \
-//         "#  ##### #" \
-//         "#  #     #" \
-//         "#  #     #" \
-//         "#  ####  #" \
-//         "#        #" \
-//         "##########" \
-//     ;
-//
-//     for (int r = 0; r < rows; r++) {
-//         for (int c = 0; c < cols; c++) {
-//             t[r][c] = map[r*cols + c];
-//         }
-//     }
-//
-//     print_tiles(t, rows, cols);
-//
-//     printf("From %d,%d to %d,%d -> %d, expected  5\n", 1, 1, 3, 4, bfs_search(t, 10, 10, 1, 1, 3, 4));
-//     printf("From %d,%d to %d,%d -> %d, expected 10\n", 3, 4, 5, 4, bfs_search(t, 10, 10, 3, 4, 5, 4));
-//     printf("From %d,%d to %d,%d -> %d, expected 15\n", 1, 1, 5, 4, bfs_search(t, 10, 10, 1, 1, 5, 4));
-//     printf("From %d,%d to %d,%d -> %d, expected 15\n", 1, 1, 5, 4, bfs_search(t, 10, 10, 1, 1, 5, 4));
-//     printf("From %d,%d to %d,%d -> %d, expected 15\n", 1, 1, 5, 4, bfs_search(t, 10, 10, 1, 1, 5, 4));
-//     for (int i = 0; i < cols; i++) {
-//         free(t[i]);
-//     }
-//     free(t);
-// }
-
 int main(int argc, char** argv) {
     char line[LINELEN];
     if (argc != 2) {
