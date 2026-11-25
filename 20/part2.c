@@ -6,60 +6,58 @@
 #include <string.h>
 
 #define LINELEN 1000
-#define LAYERS 100000 // sure we are not gonna go more than a 100 layers deep, that would be stupid
 #define MIN(a, b) (a < b ? a : b)
+#define MAX_NEIGHBORS 10
+#define MAX_NODES 100
 
-typedef struct node {
-    int r; // Row
-    int c; // Column
-    int layer; // we have to go deeper
-    char tile; // tileface
-    int visited; // Has this tile been visited
-    int value; // How many steps it took to get here
-    struct node *teleport; // Where this node can teleport
-} node;
+struct graph_node {
+    char name[3];
+    int r;
+    int c;
+    int num_neighbors;
+    int neighbors[MAX_NEIGHBORS];
+    int neighbor_dist[MAX_NEIGHBORS];
+    int jump_neighbor;
+};
+
+static int rows, cols;
+static char* tiles;
+
+// Nodes are indexed in arbitrary discovery order.
+// Their index is their primary id.
+struct graph_node nodes[MAX_NODES];
+static int num_nodes = 0;
 
 int is_shortcut_char(char c) {
     return (c <= 'Z' && c >= 'A');
 }
 
-node *shortcuts[26*26*2];
-int get_shortcut_index(char name[2]) {
-    int a = name[0] - 'A';
-    int b = name[1] - 'A';
-    return (a*26+b) * 2;
-}
-
-node*** tiles;
-
-int is_outer_layer(node *n, int rows, int cols) {
-    if (n->r == 2) return 1;
-    if (n->c == 2) return 1;
-    if (rows - n->r == 2) return 1;
-    if (cols - n->c == 2) return 1;
+int is_outer_layer(int r, int c) {
+    if (r == 2) return 1;
+    if (c == 2) return 1;
+    if (rows - r == 2) return 1;
+    if (cols - c == 2) return 1;
     return 0;
 }
 
-void print_tiles(node** tiles, int rows, int cols)
+void print_tiles()
 {
     // Top number row
-    printf("   ");
+    printf("    ");
     for (int c = 0; c < cols; c++) {
         printf("%c", c/10 ? c/10 + '0' : ' ');
     }
     printf("\n");
-    printf("   ");
+    printf("    ");
     for (int c = 0; c < cols; c++) {
         printf("%1d", c%10);
     }
     printf("\n");
 
     for (int r = 0; r < rows; r++) {
-        printf("%2d ", r);
+        printf("%3d ", r);
         for (int c = 0; c < cols; c++) {
-            char pchar = tiles[r][c].tile;
-            if (tiles[r][c].visited) pchar = 'X';
-            if (tiles[r][c].teleport != NULL) pchar = '@';
+            char pchar = tiles[r * cols + c];
             printf("%c", pchar);
         }
         printf("\n");
@@ -67,64 +65,127 @@ void print_tiles(node** tiles, int rows, int cols)
     printf("\n");
 }
 
-void clear_tiles(node** t, int rows, int cols) {
+
+// TODO
+// Function to search through the nodes and find the one with the matching name
+
+// Flood fill to get all the distances to all other nodes
+struct fifo {
+    int *points;
+    int write_index; // this has been written
+    int read_index; // this is to be read
+};
+
+void flood_fill(uint32_t* field, struct fifo f) {
+    fflush(stdout);
+    while (f.read_index <= f.write_index) {
+        int p = f.points[f.read_index];
+        // get the four neighbors
+        int indexes[4] = { p+cols, p-cols, p+1, p-1 };
+        // If unvisited and steppable
+        for (int i = 0; i < 4; i++) {
+            int index = indexes[i];
+            if (tiles[index] == '.' && field[index] == UINT32_MAX) {
+                // distance is current +1
+                field[index] = field[p]+1;
+                // append the visited point to the fifo
+                f.points[++f.write_index] = index;
+            }
+        }
+        // This point has been dealt with
+        f.read_index++;
+    }
+}
+
+void print_distances(uint32_t* d) {
+    for (int r = 0; r < rows; r++) {
+        for(int c = 0; c < cols; c++) {
+            int i = r*cols+c;
+            if (d[i] != UINT32_MAX) {
+                printf("%1u", d[i]%10);
+            }
+            else if(tiles[i] == '#'){
+                printf(".");
+            }
+            else printf(" ");
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+void get_distances(int id) {
+    uint32_t *d = malloc(sizeof(uint32_t)*rows*cols);
+    memset(d, 0xFF, sizeof(uint32_t) * rows * cols);
+    struct fifo f;
+    f.points = (int*)malloc(sizeof(int) * rows * cols);
+    f.write_index = 0;
+    f.read_index = 0;
+    f.points[0] = nodes[id].r * cols + nodes[id].c;
+
+    // start is 0 steps
+    d[nodes[id].r*cols+nodes[id].c] = 0;
+    flood_fill(d, f);
+    // printf("Distance field of %d\n\n\n", id);
+    // print_distances(d);
+
+    // Update the graph with distances
+    for (int n = 0; n < num_nodes; n++) {
+        if (n==id) continue;
+        int n_pos = nodes[n].r*cols+nodes[n].c;
+        if (d[n_pos] != UINT32_MAX) {
+            struct graph_node *node = &nodes[id];
+            node->neighbors[node->num_neighbors] = n;
+            node->neighbor_dist[node->num_neighbors] = d[n_pos];
+            node->num_neighbors++;
+        }
+    }
+    printf("found %d neighbors\n", nodes[id].num_neighbors);
+    free(d);
+    free(f.points);
+}
+
+// TODO turn shortcut names to graph nodes
+void generate_named_nodes() {
+    // Match up shortcut designators
+    // shortcut designations are always left to right top to bottom the same
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
-            t[r][c].visited = 0;
+            char shortcut_name[3] = "";
+            if (tiles[r * cols + c] == '.') {
+                // check 4 surrounding tiles
+                if (is_shortcut_char(  tiles[(r-1)*cols+c])) {
+                    shortcut_name[0] = tiles[(r-2)*cols+c];
+                    shortcut_name[1] = tiles[(r-1)*cols+c];
+                }
+                if (is_shortcut_char(  tiles[(r+1)*cols+c])) {
+                    shortcut_name[0] = tiles[(r+1)*cols+c];
+                    shortcut_name[1] = tiles[(r+2)*cols+c];
+                }
+                if (is_shortcut_char(  tiles[r*cols+c-1])) {
+                    shortcut_name[0] = tiles[r*cols+c-2];
+                    shortcut_name[1] = tiles[r*cols+c-1];
+                }
+                if (is_shortcut_char(  tiles[r*cols+c+1])) {
+                    shortcut_name[0] = tiles[r*cols+c+1];
+                    shortcut_name[1] = tiles[r*cols+c+2];
+                }
+                if (strlen(shortcut_name)) {
+                    printf("Shortcut %s at %d,%d\n", shortcut_name, r, c);
+                    // append node to the list
+                    nodes[num_nodes] = (struct graph_node) {
+                        .r = r,
+                        .c = c,
+                    };
+                    memcpy(nodes[num_nodes].name, shortcut_name, 3);
+                    num_nodes++;
+                }
+            }
         }
     }
 }
 
-int bfs_search(node*** t, int rows, int cols, node* from, node* to) {
-    static int maxdepth = 0;
-    int ret = -1;
-    // Absolute maximum possible nodes to visit
-    node **nodes = (node**)malloc(sizeof(node*) * rows * cols * LAYERS);
-    memset(nodes, 0, sizeof(node*) * rows * cols * LAYERS);
-
-    nodes[0] = from;
-    nodes[0]->visited = 1;
-    int write_index = 1;
-    int read_index = 0;
-    while (read_index < write_index) {
-        node *n = nodes[read_index++];
-        if (n->r == to->r &&
-            n->c == to->c &&
-            n->layer == to->layer) {
-            // Found
-            ret = n->value;
-            break;
-        }
-        if (n->layer > maxdepth) {
-            printf("depth: %d\n", n->layer);
-            maxdepth = n->layer;
-        }
-
-        // For all 5 neighbors
-        node *neighbors[5] = {
-            &tiles[n->layer][n->r + 1 ][n->c     ],
-            &tiles[n->layer][n->r - 1 ][n->c     ],
-            &tiles[n->layer][n->r     ][n->c + 1 ],
-            &tiles[n->layer][n->r     ][n->c - 1 ],
-            n->teleport,
-        };
-
-        for (int i = 0; i < 5; i++) {
-            node *ne = neighbors[i];
-            if (ne == NULL) continue;
-            if (ne->visited) continue;
-            if (ne->tile != '.') continue;
-            // valid neighbor
-            ne->value = n->value + 1;
-            nodes[write_index++] = ne;
-            ne->visited = 1;
-        }
-    }
-    printf("Before free we got up to %d nodes\n", write_index);
-    free(nodes);
-    return ret;
-}
-
+// or get some insight where we can go with different chains
 int main(int argc, char** argv) {
     char line[LINELEN];
     if (argc != 2) {
@@ -147,122 +208,49 @@ int main(int argc, char** argv) {
     }
     rewind(f);
 
-    int rows = lines;
-    int cols = strlen(line)-1;
+    rows = lines;
+    cols = strlen(line)-1;
 
-    tiles = malloc(sizeof(node**) * LAYERS);
-    for (int l = 0; l < LAYERS; l++) {
-        tiles[l] = malloc(sizeof(node*) * rows);
-        for (int r = 0; r < rows; r++) {
-            tiles[l][r] = malloc(sizeof(node) * cols);
-        }
-    }
+    tiles = (char*)malloc(sizeof(char) * rows * cols);
 
     lines = 0;
     fgets(line, LINELEN, f);
     while (!feof(f)) {
         for (int i = 0; i < cols; i++) {
-            tiles[0][lines][i] = (node) {
-                .r = lines,
-                .c = i,
-                .tile = line[i],
-                .visited = 0,
-                .value = 0,
-                .layer = 0,
-                .teleport = NULL,
-            };
-        }
+            tiles[lines * cols + i] = line[i];
+        };
         lines++;
         fgets(line, LINELEN, f);
     }
 
-    // update all tiles to correct layers
-    for (int l = 1; l < LAYERS; l++) {
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) {
-                memcpy(&tiles[l][r][c], &tiles[0][r][c], sizeof(node));
-                tiles[l][r][c].layer = l;
+    generate_named_nodes();
+
+
+    print_tiles();
+
+    for (int i = 0; i < num_nodes; i++) {
+        get_distances(i);
+    }
+
+    // Look for the pairs and record them
+    for (int i = 0; i < num_nodes; i++) {
+        for (int j = 0; j < num_nodes; j++) {
+            if (i==j) continue;
+            if (!strncmp(nodes[i].name, nodes[j].name, 3))
+            {
+                nodes[i].jump_neighbor = j;
+                nodes[j].jump_neighbor = i;
             }
         }
     }
 
-    memset(shortcuts, 0, sizeof(shortcuts));
 
-    // Match up shortcut designators
-    // shortcut designations are always left to right top to bottom the same
-    for (int r = 0; r < rows; r++) {
-        for (int c = 0; c < cols; c++) {
-            char shortcut_name[3] = "";
-            node** t = tiles[0];
-            if (t[r][c].tile == '.') {
-                // check 4 surrounding tiles
-                if (is_shortcut_char(t[r-1][c].tile)) {
-                    shortcut_name[0] = t[r-2][c].tile;
-                    shortcut_name[1] = t[r-1][c].tile;
-                }
-                if (is_shortcut_char(t[r+1][c].tile)) {
-                    shortcut_name[0] = t[r+1][c].tile;
-                    shortcut_name[1] = t[r+2][c].tile;
-                }
-                if (is_shortcut_char(t[r][c-1].tile)) {
-                    shortcut_name[0] = t[r][c-2].tile;
-                    shortcut_name[1] = t[r][c-1].tile;
-                }
-                if (is_shortcut_char(t[r][c+1].tile)) {
-                    shortcut_name[0] = t[r][c+1].tile;
-                    shortcut_name[1] = t[r][c+2].tile;
-                }
-                if (strlen(shortcut_name)) {
-                    // printf("Shortcut %s at %d,%d\n", shortcut_name, r, c);
-                    int idx = get_shortcut_index(shortcut_name);
-                    if (shortcuts[idx] != NULL) {
-                        idx++;
-                    }
-                    shortcuts[idx] = &t[r][c];
-                }
-            }
-        }
-    }
+    // With the graph complete do a dijkstra
+    // Make the depth of the graph dynamic and extend it when necessary
+    // When getting the neighbors add the pair node at one level deeper/higher
 
-    // TODO matching up does not really work. Maybe I mess up shortcut/tile pointers somewhere
-    for (int idx = 0; idx < sizeof(shortcuts)/sizeof(shortcuts[0]); idx += 2) {
-        if (!shortcuts[idx]) continue;
-        if (!shortcuts[idx+1]) {
-            printf("Skipping %d,%d\n", shortcuts[idx]->r, shortcuts[idx]->c);
-            continue; // this filters for AA and ZZ
-        }
-        node *outer, *inner;
-        if (is_outer_layer(shortcuts[idx], rows, cols)) {
-            outer = shortcuts[idx];
-            inner = shortcuts[idx+1];
-        }
-        else {
-            outer = shortcuts[idx+1];
-            inner = shortcuts[idx];
-        }
-        printf("Inner: %d,%d\t Outer: %d,%d\n", inner->r, inner->c, outer->r, outer->c);
 
-        for (int l = 0; l < LAYERS - 1; l++) {
-            // Connect the upper level (lower number) inside node to the lower level outside node
-            node* upper = &tiles[l  ][inner->r][inner->c];
-            node* lower = &tiles[l+1][outer->r][outer->c];
-            upper->teleport = lower;
-            lower->teleport = upper;
-        }
-    }
-
-    print_tiles(tiles[1], rows, cols);
-
-    node* startnode = shortcuts[get_shortcut_index("AA")];
-    startnode = &tiles[0][startnode->r][startnode->c];
-    node* endnode = shortcuts[get_shortcut_index("ZZ")];
-    endnode = &tiles[0][endnode->r][endnode->c];
-    printf("Starting search\n");
-    int min_distance = bfs_search(tiles, rows, cols, startnode, endnode);
-    printf("Minimum distance found: %d\n", min_distance);
-    print_tiles(tiles[0], rows, cols);
-    print_tiles(tiles[1], rows, cols);
-
+    free(tiles);
     return 0;
 }
 
