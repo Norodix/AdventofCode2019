@@ -9,6 +9,9 @@
 #define MIN(a, b) (a < b ? a : b)
 #define MAX_NEIGHBORS 10
 #define MAX_NODES 100
+#define MAX_QUEUE_LEN 1000
+#define MAX_LAYERS 1000
+#define ID_INVALID -1
 
 struct graph_node {
     char name[3];
@@ -32,12 +35,46 @@ int is_shortcut_char(char c) {
     return (c <= 'Z' && c >= 'A');
 }
 
-int is_outer_layer(int r, int c) {
+int is_outer_layer(int id) {
+    int r,c;
+    r = nodes[id].r;
+    c = nodes[id].c;
     if (r == 2) return 1;
     if (c == 2) return 1;
-    if (rows - r == 2) return 1;
-    if (cols - c == 2) return 1;
+    if (rows - r == 3) return 1;
+    if (cols - c == 3) return 1;
     return 0;
+}
+
+// Single pass bubble sort
+// There are some weird outlier values
+void insertq(int *q, uint32_t* dtotals, int id) {
+    int working_id = id;
+    int tmp;
+    for (int i = 0; i < MAX_QUEUE_LEN; i++) {
+        if (q[i] == ID_INVALID) {
+            q[i] = working_id;
+            break;
+        }
+        else if (dtotals[q[i]] > dtotals[working_id]) {
+            tmp = q[i];
+            q[i] = working_id;
+            working_id = tmp;
+        }
+    }
+    // validate that we have not reached the end of the queue
+    if (q[MAX_QUEUE_LEN-1] != -1) {
+        perror("q full\n");
+        exit(-1);
+    }
+}
+
+int popq(int* q) {
+    int q0 = q[0];
+    for (int i = 1; i < MAX_QUEUE_LEN; i++) {
+        q[i-1] = q[i];
+    }
+    return q0;
 }
 
 void print_tiles()
@@ -66,8 +103,6 @@ void print_tiles()
 }
 
 
-// TODO
-// Function to search through the nodes and find the one with the matching name
 
 // Flood fill to get all the distances to all other nodes
 struct fifo {
@@ -140,12 +175,10 @@ void get_distances(int id) {
             node->num_neighbors++;
         }
     }
-    printf("found %d neighbors\n", nodes[id].num_neighbors);
     free(d);
     free(f.points);
 }
 
-// TODO turn shortcut names to graph nodes
 void generate_named_nodes() {
     // Match up shortcut designators
     // shortcut designations are always left to right top to bottom the same
@@ -171,7 +204,6 @@ void generate_named_nodes() {
                     shortcut_name[1] = tiles[r*cols+c+2];
                 }
                 if (strlen(shortcut_name)) {
-                    printf("Shortcut %s at %d,%d\n", shortcut_name, r, c);
                     // append node to the list
                     nodes[num_nodes] = (struct graph_node) {
                         .r = r,
@@ -232,6 +264,10 @@ int main(int argc, char** argv) {
         get_distances(i);
     }
 
+    // Set default jump neighbors to invalid
+    for (int i = 0; i < num_nodes; i++) {
+        nodes[i].jump_neighbor = ID_INVALID;
+    }
     // Look for the pairs and record them
     for (int i = 0; i < num_nodes; i++) {
         for (int j = 0; j < num_nodes; j++) {
@@ -242,13 +278,88 @@ int main(int argc, char** argv) {
                 nodes[j].jump_neighbor = i;
             }
         }
+        // printf("%d (%s) is an %s node and it jump to %d (%s)\n", i, nodes[i].name,
+        //         is_outer_layer(i)?"outer":"inner",
+        //         nodes[i].jump_neighbor, nodes[nodes[i].jump_neighbor].name);
     }
 
 
     // With the graph complete do a dijkstra
-    // Make the depth of the graph dynamic and extend it when necessary
-    // When getting the neighbors add the pair node at one level deeper/higher
+    printf("Start solving\n");
 
+    uint32_t *dtotals = malloc(sizeof(uint32_t) * num_nodes * MAX_LAYERS);
+    int queue[MAX_QUEUE_LEN]; // the queue contains the layered ids (id+layer*num_nodes)
+    for (int i = 0; i < MAX_QUEUE_LEN; i++) {
+        queue[i] = -1;
+    }
+    for (int i = 0; i < num_nodes * MAX_LAYERS; i++) {
+        dtotals[i] = UINT32_MAX;
+    }
+    int id_AA, id_ZZ;
+    for (int i = 0; i < num_nodes; i++) {
+        if (!strncmp(nodes[i].name, "AA", 3)) id_AA = i;
+        if (!strncmp(nodes[i].name, "ZZ", 3)) id_ZZ = i;
+    }
+    dtotals[id_AA] = 0;
+    // Number of nodes in the queue
+    int numds = 1;
+    queue[0] = id_AA;
+    while(numds != 0) {
+        if (queue[0] == ID_INVALID) {
+            perror("Q empty, no path found\n");
+            exit(-3);
+        }
+        if (queue[0] == id_ZZ) {
+            printf("Found shortest path %d\n", dtotals[id_ZZ]);
+            break;
+        }
+        int working_id = popq(queue);
+        int layer = working_id / num_nodes;
+        int flat_id = working_id % num_nodes;
+        // printf("Next node %d (%d %s)\n", working_id, flat_id, nodes[flat_id].name);
+        // printf("On layer %d\n", layer);
+        // printf("It took %d steps to get to this node\n", dtotals[working_id]);
+        // Add same-layer nodes to the queue
+        for (int n = 0; n < nodes[flat_id].num_neighbors; n++) {
+            uint32_t new_d = dtotals[working_id] + nodes[flat_id].neighbor_dist[n];
+            int other_id = layer*num_nodes + nodes[flat_id].neighbors[n]; // neighbor on the same layer
+            if (new_d < dtotals[other_id]) {
+                // This is a new shortest path to this other node, insert it to the queue
+                // printf("\tInserting %d (%u vs %u)\n", other_id, new_d, dtotals[other_id]);
+                dtotals[other_id] = new_d;
+                insertq(queue, dtotals, other_id);
+            }
+            else {
+                // printf("\tSkipping %d (%u vs %u)\n", other_id, new_d, dtotals[other_id]);
+            }
+        }
+        // if outer then add 1 higher layer as neighbor
+        int newlayer = layer + (is_outer_layer(flat_id) ? -1 : 1);
+        // printf("moving from %d to %d\n", layer, newlayer);
+        // if we just remain on the same layer we solve the first part
+        // newlayer = layer;
+        if (newlayer < 0) {
+            continue;
+        }
+        if (newlayer >= MAX_LAYERS) {
+            perror("Not enough layers\n");
+            exit(-2);
+        }
+        // add the pair node on the new layer
+        int other_flat_id = nodes[flat_id].jump_neighbor;
+        if (other_flat_id == ID_INVALID) continue;
+        int other_id = newlayer * num_nodes + other_flat_id;
+        uint32_t new_d = dtotals[working_id] + 1;
+        if (new_d < dtotals[other_id]) {
+            // This is a new shortest path to this other node, insert it to the queue
+            // printf("\tInserting %d (%u vs %u)\n", other_id, new_d, dtotals[other_id]);
+            dtotals[other_id] = new_d;
+            insertq(queue, dtotals, other_id);
+        }
+        else {
+            // printf("\tSkipping %d (%u vs %u)\n", other_id, new_d, dtotals[other_id]);
+        }
+    }
 
     free(tiles);
     return 0;
